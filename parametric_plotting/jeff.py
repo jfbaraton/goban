@@ -8,10 +8,10 @@ import logging
 
 # Parametric equations in cartesian co-ordinates
 # Parametres
-a = 0.5
-a2 = 2
-b = 0
-b2 = 0
+a = 1
+a2 = 3
+b = -1
+b2 = -10
 
 # y=ax+b is transformed to a1x+b1y+c1=0
 def affine_to_params(a,b):
@@ -41,10 +41,15 @@ def intersection(affine1, affine2):
     y = affine1[0]*x+affine1[1]
     return x,y
 
-def split_angle(affine1, affine2):
+def split_angle(line1, line2):
     result = []
-    amount_intervals = 1
-    #amount_intervals = 19
+    affine1 = line1
+    affine2 = line2
+    if(affine2[0]<affine1[0]):
+        affine1 = line2
+        affine2 = line1
+    #amount_intervals = 1
+    amount_intervals = 19
     radians = get_angle(affine1, affine2)
     logging.log(50,"split_angle between %s " % rad2deg(math.atan(affine1[0])))
     logging.log(50,"split_angle AND %s " % rad2deg(math.atan(affine2[0])))

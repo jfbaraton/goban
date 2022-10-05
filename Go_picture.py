@@ -166,10 +166,34 @@ def crop_for_zoom(img):
     #Returns a rectangular region from this image. The box is a 4-tuple defining the left, upper, right, and lower pixel coordinate
     return img.crop(zoom_area)
 
+def alpha_to_color(image, color=(255, 255, 255)):
+    """Set all fully transparent pixels of an RGBA image to the specified color.
+    This is a very simple solution that might leave over some ugly edges, due
+    to semi-transparent areas. You should use alpha_composite_with color instead.
+
+    Source: http://stackoverflow.com/a/9166671/284318
+
+    Keyword Arguments:
+    image -- PIL RGBA Image object
+    color -- Tuple r, g, b (default 255, 255, 255)
+
+    """ 
+    x = numpy.array(image)
+    r, g, b, a = numpy.rollaxis(x, axis=-1)
+    r[a == 0] = color[0]
+    g[a == 0] = color[1]
+    b[a == 0] = color[2] 
+    x = numpy.dstack([r, g, b])
+    return Image.fromarray(x, 'RGB')
+
 def read_texture(filename):
     global imgWidth, imgHeight, zoom_area, boardLines
     img = Image.open(filename)
-    #logging.log(50,"img mode %s " % img.mode)
+    logging.log(50,"img mode %s " % img.mode)
+    if(img.mode != "RGB"):
+        img = alpha_to_color(img)
+        
+    logging.log(50,"img mode AFTER1 %s " % img.mode)
     print(img.width )
     print(img.height )
     img_data2=transform_goban(img)
@@ -177,6 +201,7 @@ def read_texture(filename):
     img_data2=goban_grid(img)
     
     img = crop_for_zoom(img)
+    logging.log(50,"img mode AFTER2 %s " % img.mode)
     img_data = numpy.array(list(img.getdata()), numpy.int8)
     imgWidth = img.width
     imgHeight = img.height
@@ -190,7 +215,8 @@ def read_texture(filename):
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL)
-    img_format = GL_RGB if img.mode == "RGB" else GL_RGBA
+    #img_format = GL_RGB if img.mode == "RGB" else GL_RGBA
+    img_format = GL_RGB
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.size[0], img.size[1], 0,
              img_format, GL_UNSIGNED_BYTE, img_data)
              
@@ -205,7 +231,9 @@ def read_texture(filename):
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL)
-    img_format = GL_RGB if img.mode == "RGB" else GL_RGBA
+    logging.log(50,"img mode AFTER3 %s " % img.mode)
+    #img_format = GL_RGB if img.mode == "RGB" else GL_RGBA
+    img_format = GL_RGB
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.size[0], img.size[1], 0,
              img_format, GL_UNSIGNED_BYTE, img_data2)
     return texture_id1,texture_id2
@@ -216,12 +244,7 @@ def transform_goban(img):
     somePixelValue = imgCopy.getpixel((0, 0))
     logging.log(50,"type {0}".format(type(imgCopy)))
     logging.log(50,"somePixelValue {0}".format(somePixelValue))
-    #imgCopy.getpixel((x,y))
-    #imgCopy.putdata(data, scale=1.0, offset=0.0)
-    #imgCopy.putpixel((x,y),value)
-    #for x in range(100):
-    #    for y in range(100):
-    #        imgCopy.putpixel((x,y),somePixelValue)
+    
     put_cross(imgCopy, 535,692)
     put_cross(imgCopy, 124,637)
     put_cross(imgCopy, 303,531)
@@ -240,23 +263,19 @@ def transform_goban(img):
     logging.log(50,"zoom_area {0}".format(zoom_area))
     
     
-    
-    #put_visible_cross(imgCopy, 535,692)
-    #put_visible_cross(imgCopy, 124,637, color=(0,255,0))
-    #put_visible_cross(imgCopy, 303,531, color=(0,255,0))
-    #put_visible_cross(imgCopy, 613,551)
     ellipse_half_horiz= math.floor((zoom_area[2]-zoom_area[0]-2*horizontalMargin)/2.65)
     ellipse_half_vert = math.floor((zoom_area[3]-zoom_area[1]-2*verticalMargin)/2.65)
     imgCopy = crop_for_zoom(imgCopy)
-    put_ellipse(imgCopy, math.floor((zoom_area[2]-zoom_area[0])/2), math.floor((zoom_area[3]-zoom_area[1])/2), a=ellipse_half_horiz, b=ellipse_half_vert )
     
     cropped_corners = [(a-zoom_area[0],b-zoom_area[1]) for (a,b) in corners]
     logging.log(50,"cropped_corners {0}".format(cropped_corners))
-    fill_outside(imgCopy, cropped_corners)
     
     global left, top, right, bot, left_with_margin, top_with_margin, right_with_margin, bot_with_margin
     
     classify(imgCopy)
+    fill_outside(imgCopy, cropped_corners)
+    put_ellipse(imgCopy, math.floor((zoom_area[2]-zoom_area[0])/2), math.floor((zoom_area[3]-zoom_area[1])/2), a=ellipse_half_horiz, b=ellipse_half_vert )
+    
     ##
     ## looking for the exact board frame, removing the rest
     ##
@@ -266,16 +285,12 @@ def transform_goban(img):
     top_left_wide_sector = [(0,0),(top_with_margin[0],left_with_margin[1]),(top_with_margin[0],0),(0,left_with_margin[1])]
     lineA, lineB = get_green_line(imgBorders, top_left_wide_sector)
     boardLines.append((lineA, lineB),)
-    #draw_line(imgBorders, lineA,lineB)
     top_left_outside_triangle = [(0,0),(-1000,math.floor(-1000*lineA+lineB)),(1000,math.floor(1000*lineA+lineB))]
     fill_triangle(imgBorders, top_left_outside_triangle)
-    #fill_quad(imgBorders, top_left_wide_sector, color = BLUE)
     # 1 top right
     top_right_wide_sector = [(imgBorders.width,0),(top_with_margin[0],right_with_margin[1]),(top_with_margin[0],0),(imgBorders.width,right_with_margin[1])]
     lineA, lineB = get_green_line(imgBorders, top_right_wide_sector)
     boardLines.append((lineA, lineB),)
-    #fill_quad(imgBorders, top_right_wide_sector, color = BLUE)
-    #draw_line(imgBorders, lineA,lineB)
     top_left_outside_triangle = [(imgBorders.width,0),(-1000,math.floor(-1000*lineA+lineB)),(1000,math.floor(1000*lineA+lineB))]
     logging.log(50,"top_left_outside_triangle {0}".format(top_left_outside_triangle))
     fill_triangle(imgBorders, top_left_outside_triangle)
@@ -289,25 +304,75 @@ def transform_goban(img):
     bot_left_wide_sector = [(0,img.height),(bot_with_margin[0],left_with_margin[1]),(bot_with_margin[0],img.height),(0,left_with_margin[1])]
     lineA, lineB = get_green_line(imgBorders, bot_left_wide_sector)
     boardLines.append((lineA, lineB),)
-    #draw_line(imgBorders, lineA,lineB)
     bot_left_outside_triangle = [(0,img.height),(-1000,math.floor(-1000*lineA+lineB)),(1000,math.floor(1000*lineA+lineB))]
     fill_triangle(imgBorders, bot_left_outside_triangle)
-    #fill_quad(imgBorders, bot_left_wide_sector, color = BLUE)
     # 1 top right
     bot_right_wide_sector = [(imgBorders.width,img.height),(bot_with_margin[0],right_with_margin[1]),(bot_with_margin[0],img.height),(imgBorders.width,right_with_margin[1])]
     lineA, lineB = get_green_line(imgBorders, bot_right_wide_sector)
     boardLines.append((lineA, lineB),)
-    #fill_quad(imgBorders, bot_right_wide_sector, color = BLUE)
     draw_line(imgBorders, lineA,lineB)
     bot_left_outside_triangle = [(imgBorders.width,img.height),(-1000,math.floor(-1000*lineA+lineB)),(1000,math.floor(1000*lineA+lineB))]
     logging.log(50,"bot_left_outside_triangle {0}".format(bot_left_outside_triangle))
     fill_triangle(imgBorders, bot_left_outside_triangle)
     
-    #reset_colors(imgBorders, src=[GREEN, BLUE], color=ORANGE)
     
-    #result = numpy.array(list(imgCopy.getdata()), numpy.int8)
     result = numpy.array(list(imgBorders.getdata()), numpy.int8)
     return result
+
+def affine_to_params(a,b):
+    a1 = -a
+    b1 = 1
+    c1 = -b
+    return a1,b1,c1
+
+# a1x+b1y+c1=0 is transformed to y=ax+b
+def params_to_affine(a1, b1, c1):
+    a = -a1/b1
+    b = -c1/b1
+    return a,b
+
+def get_angle(affine1, affine2):
+    q = (affine2[0]-affine1[0])/(1+affine2[0]*affine1[0])
+    return math.atan(numpy.abs(q))
+
+def rad2deg(angle):
+    return angle*180/numpy.pi
+
+def deg2rad(angle):
+    return angle*numpy.pi/180
+
+def intersection(affine1, affine2):
+    x = (affine2[1]-affine1[1])/(affine1[0]-affine2[0])
+    y = affine1[0]*x+affine1[1]
+    return x,y
+
+def split_angle(line1, line2):
+    result = []
+    affine1 = line1
+    affine2 = line2
+    if(affine2[0]<affine1[0]):
+        affine1 = line2
+        affine2 = line1
+    
+    #amount_intervals = 1
+    amount_intervals = 19
+    radians = get_angle(affine1, affine2)
+    logging.log(50,"split_angle between %s " % rad2deg(math.atan(affine1[0])))
+    logging.log(50,"split_angle AND %s " % rad2deg(math.atan(affine2[0])))
+    for i in range(0,amount_intervals):
+        index_incr = i+0.5
+        logging.log(50,"split_angle %s " % (index_incr))
+        angle = radians*(index_incr/amount_intervals)
+        logging.log(50,"split_angle %s " % rad2deg(angle))
+        logging.log(50,"angle= %s " % (rad2deg(angle)+rad2deg(math.atan(affine1[0]))))
+        affineA = math.tan(angle+math.atan(affine1[0]))
+        logging.log(50,"a1= %s " % (affineA))
+        x,y = intersection(affine1, affine2)
+        logging.log(50,"intersection= {0} ".format( (x,y)))
+        affineB = y-affineA*x
+        result.append((affineA,affineB),)
+    return result
+
 
 def goban_grid(img):
     global zoom_area, boardLines
@@ -334,9 +399,13 @@ def goban_grid(img):
     for (lineA, lineB) in grp2:
         draw_line(imgCopy, lineA,lineB, color = BLUE)
     
-    for i in range(0,19):
-        logging.log(50,"img mode %s " % (i+0.5))
-        draw_line(imgCopy, grp1[1][0]+(0.5+i)*(grp1[0][0]-grp1[1][0])/19,grp1[1][1]+(0.5+i)*(grp1[0][1]-grp1[1][1])/19, color = GREEN)
+    
+    bissecs = split_angle(grp1[0], grp1[1])
+    for bissec in bissecs:
+        #data3 = bissec[0]*t+bissec[1]
+        #ax.plot(t, data3, 'g') # plotting t, b separately
+        #logging.log(50,"img mode %s " % (i+0.5))
+        draw_line(imgCopy, bissec[0],bissec[1], color = RED)
     
     result = numpy.array(list(imgCopy.getdata()), numpy.int8)
     return result
@@ -358,18 +427,23 @@ def reset_colors(img, src=[GREEN, BLUE], color=ORANGE):
             img.putpixel((x,y),color)
 
 def find_crosses(img, color = RED):
+    logging.log(50,"find_crosses {0}".format((img.width,img.height)))
     result = []
     for (x,y) in [(a, b) for a in range(1,img.width-1) for b in range(1,img.height-1)]:
-        if img.getpixel((x, y)) == color and \
-            img.getpixel((x+1, y)) == color and \
-            img.getpixel((x-1, y)) == color and \
-            img.getpixel((x, y+1)) == color and \
-            img.getpixel((x, y-1)) == color and \
-            img.getpixel((x+1, y+1)) != color and \
-            img.getpixel((x-1, y-1)) != color and \
-            img.getpixel((x-1, y+1)) != color and \
-            img.getpixel((x+1, y-1)) != color :
-            result.append( (x, y))
+        if img.getpixel((x, y)) == color or x == 124 and y == 637:
+            #logging.log(50,"find_RED {0}".format((x,y)))
+            #logging.log(50,"find_RED? {0}".format(img.getpixel((x, y))))
+            #logging.log(50,"find_RED? {0}".format(img.getpixel((x, y))== color))
+            if img.getpixel((x+1, y)) == color and \
+                img.getpixel((x-1, y)) == color and \
+                img.getpixel((x, y+1)) == color and \
+                img.getpixel((x, y-1)) == color and \
+                img.getpixel((x+1, y+1)) != color and \
+                img.getpixel((x-1, y-1)) != color and \
+                img.getpixel((x-1, y+1)) != color and \
+                img.getpixel((x+1, y-1)) != color :
+                #logging.log(50,"find_crosses {0}".format((x,y)))
+                result.append( (x, y))
     return result
 
 def put_visible_cross(img, x, y, size =4, color = GREEN, thickness = 2):
